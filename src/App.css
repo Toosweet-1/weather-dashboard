@@ -1,162 +1,122 @@
-import { useEffect, useState } from 'react';
-import './App.css';
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-const WEATHER_CODES = {
-  0: { label: 'Clear sky', emoji: '☀️' },
-  1: { label: 'Mainly clear', emoji: '🌤️' },
-  2: { label: 'Partly cloudy', emoji: '⛅' },
-  3: { label: 'Overcast', emoji: '☁️' },
-  45: { label: 'Foggy', emoji: '🌫️' },
-  51: { label: 'Light drizzle', emoji: '🌦️' },
-  61: { label: 'Light rain', emoji: '🌦️' },
-  63: { label: 'Rain', emoji: '🌧️' },
-  71: { label: 'Light snow', emoji: '🌨️' },
-  80: { label: 'Rain showers', emoji: '🌦️' },
-  95: { label: 'Thunderstorm', emoji: '⛈️' },
-};
-const codeInfo = (c) => WEATHER_CODES[c] ?? { label: 'Unknown', emoji: '🌡️' };
-const windDir = (deg) => {
-  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-  return dirs[Math.round(deg / 22.5) % 16];
-};
-
-async function fetchWeather(query) {
-  const geo = await fetch(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`
-  ).then(r => r.json());
-  if (!geo.results?.[0]) throw new Error(`Couldn't find "${query}"`);
-  const { latitude, longitude, name, country } = geo.results[0];
-
-  const w = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&timezone=auto&forecast_days=5`
-  ).then(r => r.json());
-
-  const c = w.current, d = w.daily;
-  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-  return {
-    city: name,
-    country,
-    temp: Math.round(c.temperature_2m),
-    high: Math.round(d.temperature_2m_max[0]),
-    low: Math.round(d.temperature_2m_min[0]),
-    description: codeInfo(c.weather_code).label,
-    humidity: Math.round(c.relative_humidity_2m),
-    wind: Math.round(c.wind_speed_10m),
-    windDir: windDir(c.wind_direction_10m),
-    feelsLike: Math.round(c.apparent_temperature),
-    pressure: Math.round(c.surface_pressure),
-    uv: Math.round(d.uv_index_max[0] ?? 0),
-    daily: d.time.slice(0, 5).map((iso, i) => ({
-      day: dayNames[new Date(iso).getDay()],
-      code: d.weather_code[i],
-      max: Math.round(d.temperature_2m_max[i]),
-      min: Math.round(d.temperature_2m_min[i]),
-    })),
-  };
+body {
+  background: #0A0F1D;
+  color: #E2E8F0;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
 }
 
-export default function App() {
-  const [query, setQuery] = useState('San Francisco');
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+.app { max-width: 1200px; margin: 0 auto; padding: 32px 20px; }
 
-  const load = async (q) => {
-    setLoading(true);
-    setError('');
-    try {
-      setData(await fetchWeather(q));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load('San Francisco'); }, []);
-
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const uvLabel = data ? (data.uv <= 2 ? 'Low' : data.uv <= 5 ? 'Moderate' : data.uv <= 7 ? 'High' : 'Extreme') : '';
-  const humidityLabel = data ? (data.humidity < 30 ? 'Dry' : data.humidity < 70 ? 'Optimal' : 'Humid') : '';
-
-  return (
-    <div className="app">
-      <header className="header">
-        <div>
-          <h1>Skyline<span className="accent">Precise</span></h1>
-          <p className="date">{today}</p>
-        </div>
-        <form onSubmit={(e) => { e.preventDefault(); if (query.trim()) load(query.trim()); }} className="search-form">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search city..." />
-        </form>
-      </header>
-
-      <main className="main-grid">
-        <section className="left-col">
-          <div className="hero-card">
-            {loading ? (
-              <p className="status">Fetching atmospheric data…</p>
-            ) : error ? (
-              <p className="status error">{error}</p>
-            ) : data && (
-              <>
-                <div className="badge">📍 CURRENT WEATHER</div>
-                <div className="hero-row">
-                  <div>
-                    <h2>{data.city}</h2>
-                    <p className="sub">{data.country} · {data.description}</p>
-                  </div>
-                  <div className="temp-block">
-                    <span className="temp">{data.temp}°</span>
-                    <div className="hi-lo">
-                      <span>H: {data.high}°</span>
-                      <span>L: {data.low}°</span>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {data && !loading && !error && (
-            <div className="forecast-row">
-              {data.daily.map((d, i) => (
-                <div key={i} className={`forecast-card ${i === 0 ? 'active' : ''}`}>
-                  <span className="day">{i === 0 ? 'Today' : d.day}</span>
-                  <div className="emoji-circle">{codeInfo(d.code).emoji}</div>
-                  <span className="fmax">{d.max}°</span>
-                  <span className="fmin">{d.min}°</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <aside className="right-col">
-          <h3>Local Insights</h3>
-          <InsightRow icon="💨" label="Wind Speed" value={data ? `${data.wind} km/h` : '—'} aside={data?.windDir} />
-          <InsightRow icon="💧" label="Humidity" value={data ? `${data.humidity}%` : '—'} aside={humidityLabel} asideClass="green" />
-          <InsightRow icon="☀️" label="UV Index" value={data ? `${data.uv} of 10` : '—'} aside={uvLabel} />
-          <InsightRow icon="🌡️" label="Feels Like" value={data ? `${data.feelsLike}°` : '—'} />
-          <InsightRow icon="📊" label="Pressure" value={data ? `${data.pressure} hPa` : '—'} />
-        </aside>
-      </main>
-    </div>
-  );
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 40px;
 }
 
-function InsightRow({ icon, label, value, aside, asideClass }) {
-  return (
-    <div className="insight-row">
-      <div className="insight-left">
-        <div className="insight-icon">{icon}</div>
-        <div>
-          <p className="insight-label">{label}</p>
-          <p className="insight-value">{value}</p>
-        </div>
-      </div>
-      {aside && <span className={`insight-aside ${asideClass || ''}`}>{aside}</span>}
-    </div>
-  );
+.header h1 { font-size: 28px; font-weight: 700; color: white; }
+.accent { color: #38BDF8; }
+.date { color: #94A3B8; font-size: 14px; margin-top: 4px; }
+
+.search-form input {
+  background: rgba(22,29,47,0.7);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 12px 18px;
+  color: white;
+  font-size: 15px;
+  width: 280px;
+  outline: none;
 }
+.search-form input:focus { border-color: #38BDF8; }
+
+.main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+@media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+
+.hero-card {
+  background: linear-gradient(135deg, rgba(56,189,248,0.15), transparent);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 32px;
+  padding: 40px;
+  min-height: 260px;
+}
+
+.status { color: #94A3B8; font-size: 18px; }
+.status.error { color: #fca5a5; }
+
+.badge {
+  display: inline-block;
+  background: rgba(56,189,248,0.1);
+  border: 1px solid rgba(56,189,248,0.2);
+  color: #38BDF8;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  padding: 6px 14px;
+  border-radius: 999px;
+  margin-bottom: 24px;
+}
+
+.hero-row { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px; }
+.hero-row h2 { font-size: 56px; font-weight: 300; color: white; line-height: 1; }
+.sub { color: #CBD5E1; font-size: 18px; margin-top: 8px; }
+
+.temp-block { text-align: right; }
+.temp { font-size: 96px; font-weight: 700; color: white; line-height: 1; }
+.hi-lo { display: flex; gap: 16px; color: #94A3B8; margin-top: 8px; font-weight: 500; }
+
+.forecast-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 24px; }
+@media (max-width: 600px) { .forecast-row { grid-template-columns: repeat(2, 1fr); } }
+
+.forecast-card {
+  background: #161D2F;
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 20px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.forecast-card.active { border-color: rgba(56,189,248,0.4); }
+.day { font-size: 13px; text-transform: uppercase; color: #94A3B8; font-weight: 500; }
+.forecast-card.active .day { color: #38BDF8; }
+.emoji-circle {
+  width: 48px; height: 48px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+}
+.forecast-card.active .emoji-circle { background: rgba(56,189,248,0.2); }
+.fmax { color: white; font-weight: 700; font-size: 18px; }
+.fmin { color: #64748b; font-size: 13px; }
+
+.right-col {
+  background: #161D2F;
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 32px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  height: fit-content;
+}
+.right-col h3 { color: white; font-weight: 700; font-size: 18px; }
+
+.insight-row { display: flex; justify-content: space-between; align-items: center; }
+.insight-left { display: flex; align-items: center; gap: 14px; }
+.insight-icon {
+  width: 40px; height: 40px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.insight-label { font-size: 12px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.05em; }
+.insight-value { color: white; font-size: 17px; font-weight: 600; margin-top: 2px; }
+.insight-aside { font-size: 12px; color: #64748b; }
+.insight-aside.green { color: #34d399; }
