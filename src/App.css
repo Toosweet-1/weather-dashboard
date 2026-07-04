@@ -1,134 +1,162 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+import { useEffect, useState } from 'react';
+import './App.css';
+
+const WEATHER_CODES = {
+  0: { label: 'Clear sky', emoji: '☀️' },
+  1: { label: 'Mainly clear', emoji: '🌤️' },
+  2: { label: 'Partly cloudy', emoji: '⛅' },
+  3: { label: 'Overcast', emoji: '☁️' },
+  45: { label: 'Foggy', emoji: '🌫️' },
+  51: { label: 'Light drizzle', emoji: '🌦️' },
+  61: { label: 'Light rain', emoji: '🌦️' },
+  63: { label: 'Rain', emoji: '🌧️' },
+  71: { label: 'Light snow', emoji: '🌨️' },
+  80: { label: 'Rain showers', emoji: '🌦️' },
+  95: { label: 'Thunderstorm', emoji: '⛈️' },
+};
+const codeInfo = (c) => WEATHER_CODES[c] ?? { label: 'Unknown', emoji: '🌡️' };
+const windDir = (deg) => {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
+};
+
+async function fetchWeather(query) {
+  const geo = await fetch(
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`
+  ).then(r => r.json());
+  if (!geo.results?.[0]) throw new Error(`Couldn't find "${query}"`);
+  const { latitude, longitude, name, country } = geo.results[0];
+
+  const w = await fetch(
+    `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&timezone=auto&forecast_days=5`
+  ).then(r => r.json());
+
+  const c = w.current, d = w.daily;
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  return {
+    city: name,
+    country,
+    temp: Math.round(c.temperature_2m),
+    high: Math.round(d.temperature_2m_max[0]),
+    low: Math.round(d.temperature_2m_min[0]),
+    description: codeInfo(c.weather_code).label,
+    humidity: Math.round(c.relative_humidity_2m),
+    wind: Math.round(c.wind_speed_10m),
+    windDir: windDir(c.wind_direction_10m),
+    feelsLike: Math.round(c.apparent_temperature),
+    pressure: Math.round(c.surface_pressure),
+    uv: Math.round(d.uv_index_max[0] ?? 0),
+    daily: d.time.slice(0, 5).map((iso, i) => ({
+      day: dayNames[new Date(iso).getDay()],
+      code: d.weather_code[i],
+      max: Math.round(d.temperature_2m_max[i]),
+      min: Math.round(d.temperature_2m_min[i]),
+    })),
+  };
 }
 
-body {
-  font-family: 'Poppins', 'Segoe UI', sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+export default function App() {
+  const [query, setQuery] = useState('San Francisco');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = async (q) => {
+    setLoading(true);
+    setError('');
+    try {
+      setData(await fetchWeather(q));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load('San Francisco'); }, []);
+
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const uvLabel = data ? (data.uv <= 2 ? 'Low' : data.uv <= 5 ? 'Moderate' : data.uv <= 7 ? 'High' : 'Extreme') : '';
+  const humidityLabel = data ? (data.humidity < 30 ? 'Dry' : data.humidity < 70 ? 'Optimal' : 'Humid') : '';
+
+  return (
+    <div className="app">
+      <header className="header">
+        <div>
+          <h1>Skyline<span className="accent">Precise</span></h1>
+          <p className="date">{today}</p>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); if (query.trim()) load(query.trim()); }} className="search-form">
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search city..." />
+        </form>
+      </header>
+
+      <main className="main-grid">
+        <section className="left-col">
+          <div className="hero-card">
+            {loading ? (
+              <p className="status">Fetching atmospheric data…</p>
+            ) : error ? (
+              <p className="status error">{error}</p>
+            ) : data && (
+              <>
+                <div className="badge">📍 CURRENT WEATHER</div>
+                <div className="hero-row">
+                  <div>
+                    <h2>{data.city}</h2>
+                    <p className="sub">{data.country} · {data.description}</p>
+                  </div>
+                  <div className="temp-block">
+                    <span className="temp">{data.temp}°</span>
+                    <div className="hi-lo">
+                      <span>H: {data.high}°</span>
+                      <span>L: {data.low}°</span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {data && !loading && !error && (
+            <div className="forecast-row">
+              {data.daily.map((d, i) => (
+                <div key={i} className={`forecast-card ${i === 0 ? 'active' : ''}`}>
+                  <span className="day">{i === 0 ? 'Today' : d.day}</span>
+                  <div className="emoji-circle">{codeInfo(d.code).emoji}</div>
+                  <span className="fmax">{d.max}°</span>
+                  <span className="fmin">{d.min}°</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <aside className="right-col">
+          <h3>Local Insights</h3>
+          <InsightRow icon="💨" label="Wind Speed" value={data ? `${data.wind} km/h` : '—'} aside={data?.windDir} />
+          <InsightRow icon="💧" label="Humidity" value={data ? `${data.humidity}%` : '—'} aside={humidityLabel} asideClass="green" />
+          <InsightRow icon="☀️" label="UV Index" value={data ? `${data.uv} of 10` : '—'} aside={uvLabel} />
+          <InsightRow icon="🌡️" label="Feels Like" value={data ? `${data.feelsLike}°` : '—'} />
+          <InsightRow icon="📊" label="Pressure" value={data ? `${data.pressure} hPa` : '—'} />
+        </aside>
+      </main>
+    </div>
+  );
 }
 
-.app {
-  max-width: 480px;
-  width: 100%;
-  padding: 48px 32px;
-  text-align: center;
-  color: white;
-}
-
-h1 {
-  margin-bottom: 32px;
-  font-size: 32px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
-  text-shadow: 0 2px 10px rgba(0,0,0,0.15);
-}
-
-.search-box {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 28px;
-}
-
-input {
-  flex: 1;
-  padding: 14px 18px;
-  border: none;
-  border-radius: 12px;
-  font-size: 16px;
-  outline: none;
-  background: rgba(255,255,255,0.9);
-  transition: all 0.2s ease;
-}
-
-input:focus {
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(255,255,255,0.4);
-}
-
-button {
-  padding: 14px 24px;
-  border: none;
-  border-radius: 12px;
-  background: rgba(255,255,255,0.95);
-  color: #764ba2;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-button:hover {
-  background: #fff;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.2);
-}
-
-.status {
-  font-size: 16px;
-  margin-top: 16px;
-  opacity: 0.9;
-}
-
-.error {
-  color: #ffdddd;
-  font-weight: 600;
-}
-
-.weather-card {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.2);
-  border-radius: 24px;
-  padding: 40px 32px;
-  margin-top: 20px;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-  animation: fadeIn 0.4s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.temp {
-  font-size: 72px;
-  font-weight: 700;
-  margin: 8px 0;
-  background: linear-gradient(135deg, #fff, #e0d4ff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.description {
-  text-transform: capitalize;
-  font-size: 18px;
-  margin-bottom: 28px;
-  opacity: 0.9;
-}
-
-.details {
-  display: flex;
-  justify-content: space-around;
-  border-top: 1px solid rgba(255,255,255,0.2);
-  padding-top: 20px;
-}
-
-.details div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  opacity: 0.85;
-}
-
-.details strong {
-  font-size: 18px;
-  font-weight: 600;
-  opacity: 1;
+function InsightRow({ icon, label, value, aside, asideClass }) {
+  return (
+    <div className="insight-row">
+      <div className="insight-left">
+        <div className="insight-icon">{icon}</div>
+        <div>
+          <p className="insight-label">{label}</p>
+          <p className="insight-value">{value}</p>
+        </div>
+      </div>
+      {aside && <span className={`insight-aside ${asideClass || ''}`}>{aside}</span>}
+    </div>
+  );
 }
