@@ -17,4 +17,4 @@ If you are developing a production application, we recommend using TypeScript wi
 
 App URL
 
-https://vercel.com/tswt/weather-dashboard/EbELcQa1j7cSW4pbQGNeZsYRMzmB
+https://weather-dashboard-six-weld.vercel.app/
